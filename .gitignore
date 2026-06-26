@@ -1,0 +1,25 @@
+# Entorno virtual
+venv/
+.venv/
+env/
+
+# Python cache
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Variables de entorno y llaves privadas
+.env
+.env.local
+.env.*.local
+
+# Configuración local de IDEs
+.vscode/
+.idea/
+
+# Configuración de Cursor y archivos de especificación/historial locales
+.cursor/
+HISTORIAL.md
+SPECS.md
