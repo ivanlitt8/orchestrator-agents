@@ -2,7 +2,10 @@ langgraph
 langchain-openai
 langchain-anthropic
 langchain-google-genai
-langchain-community
+langchain-tavily
 tavily-python
+chromadb
 pydantic
 python-dotenv
+fastapi
+uvicorn[standard]

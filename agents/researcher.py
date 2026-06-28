@@ -12,14 +12,33 @@ def _construir_consulta(subtarea_descripcion: str, solicitud: str) -> str:
     return f"{subtarea_descripcion.strip()} | Contexto del usuario: {solicitud.strip()}"
 
 
+def _ejecutar_busqueda_adicional(state: State) -> dict:
+    """Ejecuta búsqueda Tavily adicional sin borrar contexto previo."""
+    consulta = state.nueva_query_busqueda.strip()
+    hallazgo = buscar_web(consulta)
+    encabezado = f"[Investigador] Búsqueda adicional: {consulta}"
+    contexto = f"{encabezado}\n{hallazgo}"
+
+    return {
+        "contexto_acumulado": state.contexto_acumulado + [contexto],
+        "necesita_nueva_busqueda": False,
+        "nueva_query_busqueda": "",
+    }
+
+
 def nodo_investigador(state: State) -> dict:
-    """Ejecuta búsqueda web real con Tavily para la subtarea pendiente del investigador."""
+    """Ejecuta búsqueda web con Tavily (plan o búsqueda adicional por feedback)."""
+    contador = {"intentos_busqueda": state.intentos_busqueda + 1}
+
+    if state.necesita_nueva_busqueda and state.nueva_query_busqueda.strip():
+        return {**_ejecutar_busqueda_adicional(state), **contador}
+
     subtarea = primera_subtarea_pendiente_por_agente(
         state.plan,
         AgenteEspecialista.INVESTIGADOR,
     )
     if subtarea is None:
-        return {}
+        return contador
 
     consulta = _construir_consulta(subtarea.descripcion, state.solicitud)
     hallazgo = buscar_web(consulta)
@@ -28,6 +47,7 @@ def nodo_investigador(state: State) -> dict:
     contexto = f"{encabezado}\n{hallazgo}"
 
     return {
+        **contador,
         "contexto_acumulado": state.contexto_acumulado + [contexto],
         "plan": marcar_subtarea_completada(
             state.plan,

@@ -15,6 +15,9 @@ env/
 .env.local
 .env.*.local
 
+# Datos locales
+data/chroma_db/
+
 # Configuración local de IDEs
 .vscode/
 .idea/

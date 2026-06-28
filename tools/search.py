@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 
 from dotenv import load_dotenv
-from langchain_community.tools import TavilySearchResults
+from langchain_tavily import TavilySearch
 
 load_dotenv()
 
@@ -21,9 +21,9 @@ def _obtener_api_key() -> str:
 
 
 @lru_cache(maxsize=1)
-def _obtener_herramienta_busqueda() -> TavilySearchResults:
-    """Instancia singleton de TavilySearchResults con credenciales del entorno."""
-    return TavilySearchResults(
+def _obtener_herramienta_busqueda() -> TavilySearch:
+    """Instancia singleton de TavilySearch con credenciales del entorno."""
+    return TavilySearch(
         max_results=MAX_RESULTS,
         search_depth=SEARCH_DEPTH,
         include_answer=True,
@@ -72,10 +72,11 @@ def buscar_web(consulta: str) -> str:
         raise ValueError("La consulta de búsqueda no puede estar vacía.")
 
     herramienta = _obtener_herramienta_busqueda()
-    resultados, metadata = herramienta._run(consulta.strip())
+    respuesta = herramienta.invoke({"query": consulta.strip()})
 
-    if isinstance(resultados, str):
-        return f"[Investigador — Tavily] Error en búsqueda: {resultados}"
+    if isinstance(respuesta, str):
+        return f"[Investigador — Tavily] Error en búsqueda: {respuesta}"
 
-    respuesta = metadata.get("answer") if metadata else None
-    return _formatear_hallazgos(consulta.strip(), resultados, respuesta)
+    resultados = respuesta.get("results", [])
+    resumen = respuesta.get("answer")
+    return _formatear_hallazgos(consulta.strip(), resultados, resumen)
