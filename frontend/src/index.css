@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+  width: 100%;
+}
+
+/* Radix ScrollArea: el wrapper interno del viewport usa display:table y rompe el scroll en textareas */
+[data-slot='scroll-area-viewport'] > div {
+  display: block !important;
+}
