@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, CheckCircle2, Loader2, User } from 'lucide-react'
 import type { FeedItem, ScreenStep } from '../types'
 import { AGENTES_GRAFO } from '../constants'
-import { MarkdownReport } from './MarkdownReport'
+import { MarkdownReportRenderer } from './MarkdownReportRenderer'
 import { OrchestratorAvatar } from './OrchestratorAvatar'
 import { ScrollArea } from './ui/scroll-area'
 import { filterLogsForAgent } from '../utils/agentLogs'
@@ -222,7 +222,7 @@ function HitlReportBlock({
             </p>
           </div>
           <div className="p-4">
-            <MarkdownReport content={content} />
+            <MarkdownReportRenderer content={content} />
           </div>
         </div>
       </div>
@@ -247,7 +247,7 @@ function CompletedBlock({ content }: { content: string }) {
             </p>
           </div>
           <div className="p-4">
-            <MarkdownReport content={content} variant="premium" />
+            <MarkdownReportRenderer content={content} variant="premium" />
           </div>
         </div>
       </div>
