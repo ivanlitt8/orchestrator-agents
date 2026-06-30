@@ -1,3 +1,4 @@
+import os
 import sys
 import uuid
 from typing import Literal
@@ -91,6 +92,18 @@ def enrutar_despues_revision_humana(state: State | dict) -> DestinoHitl:
     return _destino_tras_rechazo(estado)
 
 
+def _entorno_langgraph_api() -> bool:
+    """True si LangGraph API/Studio gestiona persistencia (sin checkpointer manual)."""
+    if (
+        os.getenv("LANGGRAPH_API_KEY")
+        or os.getenv("LANGGRAPH_ENDPOINT")
+        or os.getenv("UNDER_LANGGRAPH_CLI") == "true"
+    ):
+        return True
+    # langgraph dev importa main.py tras cargar langgraph_api (sin env vars anteriores)
+    return any(name.startswith("langgraph_api") for name in sys.modules)
+
+
 def build_graph():
     builder = StateGraph(state_schema=State)
 
@@ -149,11 +162,18 @@ def build_graph():
     )
     builder.add_edge("consolidacion_memoria", END)
 
+    if _entorno_langgraph_api():
+        return builder.compile(interrupt_before=["revision_humana"])
+
     checkpointer = MemorySaver()
     return builder.compile(
         checkpointer=checkpointer,
         interrupt_before=["revision_humana"],
     )
+
+
+# Exportación para LangGraph CLI / Studio (`langgraph dev`)
+graph = build_graph()
 
 
 def crear_config(thread_id: str) -> dict:

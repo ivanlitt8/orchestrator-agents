@@ -1,25 +1,27 @@
-import { motion } from 'framer-motion'
-import {
-  Bot,
-  CheckCircle2,
-  Loader2,
-  Terminal,
-  User,
-} from 'lucide-react'
-import type { ScreenStep } from '../types'
+import { useLayoutEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Bot, CheckCircle2, Loader2, User } from 'lucide-react'
+import type { FeedItem, ScreenStep } from '../types'
 import { AGENTES_GRAFO } from '../constants'
 import { MarkdownReport } from './MarkdownReport'
 import { OrchestratorAvatar } from './OrchestratorAvatar'
 import { ScrollArea } from './ui/scroll-area'
+import { filterLogsForAgent } from '../utils/agentLogs'
 import {
   resolveAgentVisualStates,
   resolveDisplayNode,
 } from '../utils/pipelineProgress'
+import { scrollAreaToBottom } from '../utils/scrollArea'
 
 const fadeUp = {
   initial: { opacity: 0, y: 16 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const },
+}
+
+const accordionTransition = {
+  duration: 0.28,
+  ease: [0.22, 1, 0.36, 1] as const,
 }
 
 function FeedBlock({
@@ -51,102 +53,145 @@ function UserMessage({ text }: { text: string }) {
   )
 }
 
+function AgentLogsPanel({
+  logs,
+  autoScroll = false,
+}: {
+  logs: string[]
+  autoScroll?: boolean
+}) {
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (autoScroll) scrollAreaToBottom(contentRef.current)
+  }, [logs, autoScroll])
+
+  if (logs.length === 0) {
+    return (
+      <p className="px-3 py-2 font-mono text-[11px] italic text-slate-600">
+        Esperando eventos del grafo…
+      </p>
+    )
+  }
+
+  return (
+    <ScrollArea
+      type="auto"
+      className="max-h-28 w-full rounded-md border border-slate-800/50 bg-slate-950/60"
+    >
+      <div
+        ref={contentRef}
+        className="space-y-0.5 px-3 py-2 pr-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-slate-500"
+      >
+        {logs.map((linea, i) => (
+          <div key={`${linea}-${i}`}>{linea}</div>
+        ))}
+      </div>
+    </ScrollArea>
+  )
+}
+
 function ProcessingBlock({
   step,
   currentNode,
   logs,
+  frozen = false,
 }: {
   step: ScreenStep
   currentNode: string | null
   logs: string[]
+  frozen?: boolean
 }) {
-  const agentStates = resolveAgentVisualStates(currentNode, step, logs)
-  const displayNode = resolveDisplayNode(currentNode, step)
+  const visualStep = frozen ? 'HITL_WAITING' : step
+  const agentStates = resolveAgentVisualStates(currentNode, visualStep, logs)
+  const displayNode = frozen ? null : resolveDisplayNode(currentNode, step)
+  const isActive = !frozen && step === 'PROCESSING'
 
   return (
     <FeedBlock>
       <div className="flex items-start gap-2">
-        {step === 'PROCESSING' && (
+        {isActive && (
           <OrchestratorAvatar step={step} placement="processing" />
         )}
         <div className="flex min-w-0 flex-1 gap-3">
-          {step !== 'PROCESSING' && (
+          {!isActive && (
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800 ring-1 ring-slate-700">
               <Bot className="h-4 w-4 text-violet-400" />
             </div>
           )}
           <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-slate-800 bg-slate-900/60">
-          <div className="border-b border-slate-800 px-4 py-3">
-            <div className="flex items-center gap-2">
-              {step === 'PROCESSING' ? (
-                <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              )}
-              <span className="text-sm font-medium text-slate-200">
-                {step === 'PROCESSING'
-                  ? 'Orquestación en curso'
-                  : 'Pipeline completado'}
-              </span>
-              {displayNode && (
-                <span className="ml-auto font-mono text-[11px] text-slate-500">
-                  {displayNode}
-                </span>
-              )}
-            </div>
-          </div>
-          <ul className="space-y-0 divide-y divide-slate-800/80 px-2 py-1">
-            {AGENTES_GRAFO.map((agente, indice) => {
-              const { activo, completado } = agentStates[indice]
-              return (
-                <li
-                  key={agente.id}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm"
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      activo
-                        ? 'animate-pulse bg-amber-400'
-                        : completado
-                          ? 'bg-emerald-400'
-                          : 'bg-slate-600'
-                    }`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-slate-200">{agente.label}</span>
-                    <span className="ml-2 text-xs text-slate-500">
-                      {agente.desc}
-                    </span>
-                  </div>
-                  {activo && (
-                    <span className="text-xs text-amber-300/90">activo</span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-          <div className="border-t border-slate-800 bg-slate-950/80 px-4 py-3">
-            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-              <Terminal className="h-3 w-3" />
-              Logs técnicos
-            </div>
-            <ScrollArea className="max-h-28 rounded-lg border border-slate-800/60 bg-slate-950/50">
-              <div className="space-y-0.5 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-500">
-                {logs.length > 0 ? (
-                  logs.map((linea, i) => (
-                    <div key={`${linea}-${i}`} className="truncate">
-                      {linea}
-                    </div>
-                  ))
+            <div className="border-b border-slate-800 px-4 py-3">
+              <div className="flex items-center gap-2">
+                {isActive ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
                 ) : (
-                  <div className="text-slate-600 italic">
-                    Esperando eventos del grafo…
-                  </div>
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                )}
+                <span className="text-sm font-medium text-slate-200">
+                  {isActive ? 'Orquestación en curso' : 'Pipeline completado'}
+                </span>
+                {displayNode && (
+                  <span className="ml-auto font-mono text-[11px] text-slate-500">
+                    {displayNode}
+                  </span>
                 )}
               </div>
-            </ScrollArea>
+            </div>
+            <ul className="space-y-0 divide-y divide-slate-800/80 px-2 py-1">
+              {AGENTES_GRAFO.map((agente, indice) => {
+                const { activo, completado } = agentStates[indice]
+                const agentLogs = filterLogsForAgent(logs, agente.id)
+                const showLiveLogs = isActive && activo
+                const showFrozenLogs = frozen && agentLogs.length > 0
+
+                return (
+                  <li key={agente.id} className="rounded-lg px-1 py-1">
+                    <div className="flex items-center gap-3 px-2 py-2.5 text-sm">
+                      <span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          activo
+                            ? 'animate-pulse bg-amber-400'
+                            : completado
+                              ? 'bg-emerald-400'
+                              : 'bg-slate-600'
+                        }`}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-slate-200">{agente.label}</span>
+                        <span className="ml-2 text-xs text-slate-500">
+                          {agente.desc}
+                        </span>
+                      </div>
+                      {activo && (
+                        <span className="text-xs text-amber-300/90">activo</span>
+                      )}
+                    </div>
+
+                    <AnimatePresence initial={false}>
+                      {showLiveLogs && (
+                        <motion.div
+                          key={`logs-live-${agente.id}`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={accordionTransition}
+                          className="overflow-hidden px-2 pb-2"
+                        >
+                          <AgentLogsPanel logs={agentLogs} autoScroll />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {showFrozenLogs && (
+                      <div className="overflow-hidden px-2 pb-2 opacity-80">
+                        <AgentLogsPanel logs={agentLogs} />
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           </div>
-        </div>
         </div>
       </div>
     </FeedBlock>
@@ -210,44 +255,59 @@ function CompletedBlock({ content }: { content: string }) {
   )
 }
 
+function FeedHistoryItem({ item }: { item: FeedItem }) {
+  switch (item.kind) {
+    case 'user':
+      return <UserMessage text={item.text} />
+    case 'pipeline':
+      return (
+        <ProcessingBlock
+          step="HITL_WAITING"
+          currentNode={null}
+          logs={item.logs}
+          frozen
+        />
+      )
+    case 'hitl_report':
+      return (
+        <HitlReportBlock
+          content={item.content}
+          scoreCalidad={item.scoreCalidad}
+        />
+      )
+    case 'completed_report':
+      return <CompletedBlock content={item.content} />
+    default:
+      return null
+  }
+}
+
 type ChatFeedProps = {
   step: ScreenStep
-  solicitud: string
+  feedItems: FeedItem[]
   logs: string[]
   currentNode: string | null
-  interimReport?: string
-  finalReport?: string
-  scoreCalidad: number
 }
 
 export function ChatFeed({
   step,
-  solicitud,
+  feedItems,
   logs,
   currentNode,
-  interimReport,
-  finalReport,
-  scoreCalidad,
 }: ChatFeedProps) {
-  const sessionActive = step !== 'IDLE'
-
-  if (!sessionActive) return null
-
-  const informeHitl = interimReport ?? finalReport
+  if (step === 'IDLE') return null
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 pb-8">
-      {solicitud.trim() && <UserMessage text={solicitud} />}
-      {(step === 'PROCESSING' ||
-        step === 'HITL_WAITING' ||
-        step === 'COMPLETED') && (
-        <ProcessingBlock step={step} currentNode={currentNode} logs={logs} />
-      )}
-      {(step === 'HITL_WAITING' || step === 'COMPLETED') && informeHitl && (
-        <HitlReportBlock content={informeHitl} scoreCalidad={scoreCalidad} />
-      )}
-      {step === 'COMPLETED' && finalReport && (
-        <CompletedBlock content={finalReport} />
+      {feedItems.map((item) => (
+        <FeedHistoryItem key={item.id} item={item} />
+      ))}
+      {step === 'PROCESSING' && (
+        <ProcessingBlock
+          step="PROCESSING"
+          currentNode={currentNode}
+          logs={logs}
+        />
       )}
     </div>
   )

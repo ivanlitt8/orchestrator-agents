@@ -5,7 +5,13 @@ import {
   sendTaskFeedback,
   startTask,
 } from '../services/api'
-import type { ApiTareaResponse, ScreenStep, TaskState } from '../types/task'
+import type {
+  ApiTareaResponse,
+  FeedItem,
+  ScreenStep,
+  TaskState,
+} from '../types/task'
+import { createFeedItemId } from '../utils/feedId'
 
 const POLL_INTERVAL_MS = 6000
 
@@ -13,6 +19,7 @@ type UseTaskOrchestratorResult = {
   step: ScreenStep
   threadId: string | null
   solicitud: string
+  feedItems: FeedItem[]
   logs: string[]
   currentNode: string | null
   report: string | undefined
@@ -32,10 +39,41 @@ function reportFromTaskState(state: TaskState): string | undefined {
   return state.final_report ?? state.interim_report
 }
 
+function archiveProcessingCycle(
+  items: FeedItem[],
+  logs: string[],
+  nextStatus: ScreenStep,
+  interimReport: string | undefined,
+  finalReport: string | undefined,
+  scoreCalidad: number,
+): FeedItem[] {
+  const next = [...items, { id: createFeedItemId(), kind: 'pipeline' as const, logs: [...logs] }]
+
+  if (nextStatus === 'HITL_WAITING' && interimReport) {
+    next.push({
+      id: createFeedItemId(),
+      kind: 'hitl_report',
+      content: interimReport,
+      scoreCalidad,
+    })
+  }
+
+  if (nextStatus === 'COMPLETED' && finalReport) {
+    next.push({
+      id: createFeedItemId(),
+      kind: 'completed_report',
+      content: finalReport,
+    })
+  }
+
+  return next
+}
+
 export function useTaskOrchestrator(): UseTaskOrchestratorResult {
   const [step, setStep] = useState<ScreenStep>('IDLE')
   const [threadId, setThreadId] = useState<string | null>(null)
   const [solicitud, setSolicitud] = useState('')
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [logs, setLogs] = useState<string[]>([])
   const [currentNode, setCurrentNode] = useState<string | null>(null)
   const [report, setReport] = useState<string | undefined>()
@@ -48,6 +86,8 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const threadIdRef = useRef<string | null>(null)
+  const stepRef = useRef<ScreenStep>('IDLE')
+  const logsRef = useRef<string[]>([])
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current !== null) {
@@ -64,12 +104,34 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
     setFinalReport(state.final_report)
     setReport(reportFromTaskState(state))
     setWaitingForFeedback(state.waiting_for_feedback)
+    stepRef.current = state.status
+    logsRef.current = state.logs
   }, [])
 
   const syncFromApi = useCallback(
     (response: ApiTareaResponse) => {
+      const state = mapApiResponseToTaskState(response)
+      const prevStep = stepRef.current
+      const snapshotLogs = [...logsRef.current]
+
+      if (
+        prevStep === 'PROCESSING' &&
+        (state.status === 'HITL_WAITING' || state.status === 'COMPLETED')
+      ) {
+        setFeedItems((items) =>
+          archiveProcessingCycle(
+            items,
+            snapshotLogs,
+            state.status,
+            state.interim_report,
+            state.final_report,
+            response.score_calidad,
+          ),
+        )
+      }
+
       setScoreCalidad(response.score_calidad)
-      applyTaskState(mapApiResponseToTaskState(response))
+      applyTaskState(state)
     },
     [applyTaskState],
   )
@@ -115,6 +177,15 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
     [pollOnce, startPolling, stopPolling],
   )
 
+  const resetLiveOrchestration = useCallback(() => {
+    setLogs([])
+    setCurrentNode(null)
+    setInterimReport(undefined)
+    setFinalReport(undefined)
+    setReport(undefined)
+    logsRef.current = []
+  }, [])
+
   const submitPrompt = useCallback(
     async (text: string) => {
       const prompt = text.trim()
@@ -123,12 +194,10 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
       setError(null)
       setIsLoading(true)
       setSolicitud(prompt)
+      setFeedItems([{ id: createFeedItemId(), kind: 'user', text: prompt }])
       setStep('PROCESSING')
-      setLogs([])
-      setCurrentNode(null)
-      setInterimReport(undefined)
-      setFinalReport(undefined)
-      setReport(undefined)
+      stepRef.current = 'PROCESSING'
+      resetLiveOrchestration()
       stopPolling()
 
       try {
@@ -136,19 +205,20 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
         setThreadId(thread_id)
         threadIdRef.current = thread_id
 
-        // El polling es la única fuente de verdad del estado remoto.
         beginPolling(thread_id)
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : 'No se pudo iniciar la tarea'
         setError(message)
         setStep('IDLE')
+        stepRef.current = 'IDLE'
+        setFeedItems([])
         stopPolling()
       } finally {
         setIsLoading(false)
       }
     },
-    [beginPolling, stopPolling],
+    [beginPolling, resetLiveOrchestration, stopPolling],
   )
 
   const submitFeedback = useCallback(
@@ -157,9 +227,17 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
       const activeThreadId = threadIdRef.current
       if (!texto || !activeThreadId) return
 
+      const optimisticId = createFeedItemId()
+
       setError(null)
       setIsLoading(true)
+      setFeedItems((items) => [
+        ...items,
+        { id: optimisticId, kind: 'user', text: texto },
+      ])
       setStep('PROCESSING')
+      stepRef.current = 'PROCESSING'
+      resetLiveOrchestration()
       stopPolling()
 
       try {
@@ -169,13 +247,15 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
         const message =
           err instanceof Error ? err.message : 'No se pudo enviar el feedback'
         setError(message)
+        setFeedItems((items) => items.filter((item) => item.id !== optimisticId))
         setStep('HITL_WAITING')
+        stepRef.current = 'HITL_WAITING'
         stopPolling()
       } finally {
         setIsLoading(false)
       }
     },
-    [beginPolling, stopPolling],
+    [beginPolling, resetLiveOrchestration, stopPolling],
   )
 
   useEffect(() => {
@@ -188,6 +268,7 @@ export function useTaskOrchestrator(): UseTaskOrchestratorResult {
     step,
     threadId,
     solicitud,
+    feedItems,
     logs,
     currentNode,
     report,

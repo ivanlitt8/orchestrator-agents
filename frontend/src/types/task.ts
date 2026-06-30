@@ -1,5 +1,36 @@
 export type ScreenStep = 'IDLE' | 'PROCESSING' | 'HITL_WAITING' | 'COMPLETED'
 
+export type FeedUserItem = {
+  id: string
+  kind: 'user'
+  text: string
+}
+
+export type FeedPipelineItem = {
+  id: string
+  kind: 'pipeline'
+  logs: string[]
+}
+
+export type FeedHitlReportItem = {
+  id: string
+  kind: 'hitl_report'
+  content: string
+  scoreCalidad: number
+}
+
+export type FeedCompletedReportItem = {
+  id: string
+  kind: 'completed_report'
+  content: string
+}
+
+export type FeedItem =
+  | FeedUserItem
+  | FeedPipelineItem
+  | FeedHitlReportItem
+  | FeedCompletedReportItem
+
 export interface TaskState {
   thread_id: string
   status: ScreenStep

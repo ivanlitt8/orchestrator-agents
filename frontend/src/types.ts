@@ -1,1 +1,6 @@
-export type { ApiTareaResponse, ScreenStep, TaskState } from './types/task'
+export type {
+  ApiTareaResponse,
+  FeedItem,
+  ScreenStep,
+  TaskState,
+} from './types/task'

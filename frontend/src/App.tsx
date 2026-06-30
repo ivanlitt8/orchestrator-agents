@@ -7,17 +7,16 @@ import { ChatFeed } from './components/ChatFeed'
 import { ChatComposer } from './components/ChatComposer'
 // import { DevStepToolbar } from './components/DevStepToolbar'
 import { OrchestratorAvatar } from './components/OrchestratorAvatar'
+import { ScrollArea } from './components/ui/scroll-area'
 import { useTaskOrchestrator } from './hooks/useTaskOrchestrator'
 
 function App() {
   const {
     step: orchestratorStep,
     solicitud,
+    feedItems,
     logs,
     currentNode,
-    interimReport,
-    finalReport,
-    scoreCalidad,
     error,
     isLoading,
     submitPrompt,
@@ -51,8 +50,6 @@ function App() {
   const composerOnChange = isImmersive ? setMensaje : setPromptDraft
   const composerOnSubmit = isImmersive ? handleSubmitDock : handleSubmitHero
   const composerDisabled = isLoading && devStepOverride === null
-  const showDockAvatar =
-    step === 'HITL_WAITING' || step === 'COMPLETED'
 
   return (
     <LayoutGroup id="orchestrator-chat">
@@ -77,23 +74,22 @@ function App() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
-                  className="min-h-0 flex-1 overflow-y-auto"
+                  className="min-h-0 flex-1"
                 >
-                  <ChatFeed
-                    step={step}
-                    solicitud={solicitud}
-                    logs={logs}
-                    currentNode={currentNode}
-                    interimReport={interimReport}
-                    finalReport={finalReport}
-                    scoreCalidad={scoreCalidad}
-                  />
+                  <ScrollArea type="auto" className="h-full w-full">
+                    <ChatFeed
+                      step={step}
+                      feedItems={feedItems}
+                      logs={logs}
+                      currentNode={currentNode}
+                    />
+                  </ScrollArea>
                 </motion.main>
                 <div className="shrink-0 border-t border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
                   <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-4">
-                    {showDockAvatar && (
+                    {/* {showDockAvatar && (
                       <OrchestratorAvatar step={step} placement="dock" />
-                    )}
+                    )} */}
                     <div className="min-w-0 flex-1">
                       <ChatComposer
                         step={step}
