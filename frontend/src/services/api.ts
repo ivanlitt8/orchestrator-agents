@@ -1,6 +1,6 @@
 import type { ApiTareaResponse, ScreenStep, TaskState } from '../types/task'
 
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 function inferScreenStep(response: ApiTareaResponse): ScreenStep {
@@ -60,14 +60,26 @@ async function requestJson<T>(
   return response.json() as Promise<T>
 }
 
-export async function startTask(
-  prompt: string,
-): Promise<{ thread_id: string }> {
-  const data = await requestJson<ApiTareaResponse>('/api/tareas', {
+export async function createTask(prompt: string): Promise<ApiTareaResponse> {
+  return requestJson<ApiTareaResponse>('/api/tareas', {
     method: 'POST',
     body: JSON.stringify({ solicitud: prompt.trim() }),
   })
+}
+
+/** @deprecated Usar createTask + runTask tras conectar SSE */
+export async function startTask(
+  prompt: string,
+): Promise<{ thread_id: string }> {
+  const data = await createTask(prompt)
   return { thread_id: data.thread_id }
+}
+
+export async function runTask(threadId: string): Promise<void> {
+  await requestJson<{ status: string; thread_id: string }>(
+    `/api/tareas/${encodeURIComponent(threadId)}/ejecutar`,
+    { method: 'POST' },
+  )
 }
 
 export async function fetchTaskSnapshot(

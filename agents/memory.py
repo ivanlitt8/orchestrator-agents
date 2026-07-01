@@ -1,17 +1,15 @@
-import os
 from datetime import date
 from functools import lru_cache
 
+from agents.llm import STRUCTURED_OUTPUT_METHOD, crear_chat_groq
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from state import AgenteEspecialista, ExtraccionMetadatosMemoria, State
 from tools.vector_db import guardar_memoria
 
 load_dotenv()
 
-EXTRACTOR_METADATOS_MODEL = "gemini-3-flash-preview"
 MAX_CARACTERES_RESULTADO_EXTRACTOR = 3000
 
 PROMPT_SISTEMA_METADATOS = """\
@@ -31,28 +29,17 @@ temas, entidades). Ejemplo: ["La Plata", "smash burgers", "precios", "competenci
 - Basa los metadatos en el contenido real del informe, no en suposiciones genéricas.
 - Usa el mismo idioma que la solicitud del usuario.
 - Las tags deben ser específicas y buscables (nombres propios, ciudades, productos).
-- Responde únicamente mediante el esquema estructurado solicitado.
+- Responde únicamente en formato JSON válido, siguiendo estrictamente el esquema estructurado solicitado.
 """
-
-
-def _obtener_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta la variable de entorno GEMINI_API_KEY. "
-            "Configúrala en el archivo .env para extraer metadatos de memoria."
-        )
-    return api_key
 
 
 @lru_cache(maxsize=1)
 def _obtener_extractor_metadatos():
-    llm = ChatGoogleGenerativeAI(
-        model=EXTRACTOR_METADATOS_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.0,
+    llm = crear_chat_groq(temperature=0.0)
+    return llm.with_structured_output(
+        ExtraccionMetadatosMemoria,
+        method=STRUCTURED_OUTPUT_METHOD,
     )
-    return llm.with_structured_output(ExtraccionMetadatosMemoria, method="json_schema")
 
 
 def _extraer_enfoque_exitoso(plan: list) -> str:
@@ -90,7 +77,7 @@ def _construir_mensaje_extraccion_metadatos(solicitud: str, resultado_final: str
 
 
 def extraer_metadatos_memoria(solicitud: str, resultado_final: str) -> ExtraccionMetadatosMemoria:
-    """Infiere sector, tipo_tarea y tags con Gemini Structured Output."""
+    """Infiere sector, tipo_tarea y tags con salida estructurada."""
     extractor = _obtener_extractor_metadatos()
     resultado = extractor.invoke(
         [

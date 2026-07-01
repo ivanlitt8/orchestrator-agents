@@ -210,6 +210,25 @@ def reabrir_subtarea_ejecutor(plan: list["Subtarea"]) -> list["Subtarea"]:
     return plan_actualizado
 
 
+class UsoTokensNodo(BaseModel):
+    """Tokens LLM atribuidos a un nodo del grafo."""
+
+    nodo: str = Field(description="Identificador del nodo LangGraph")
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    llamadas: int = Field(default=0, ge=0)
+
+
+class MetricasTokens(BaseModel):
+    """Uso acumulado de tokens por tarea (persistido en checkpoint)."""
+
+    por_nodo: dict[str, UsoTokensNodo] = Field(default_factory=dict)
+    total_prompt_tokens: int = Field(default=0, ge=0)
+    total_completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+
+
 class State(BaseModel):
     """Estado centralizado que viaja entre nodos del grafo LangGraph."""
 
@@ -276,4 +295,8 @@ class State(BaseModel):
         default=0,
         ge=0,
         description="Veces que el flujo ha pasado por el nodo Investigador/Tavily en esta tarea",
+    )
+    metricas_tokens: MetricasTokens = Field(
+        default_factory=MetricasTokens,
+        description="Uso acumulado de tokens LLM por nodo del grafo",
     )

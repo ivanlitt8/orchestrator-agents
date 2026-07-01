@@ -1,10 +1,9 @@
-import os
 from functools import lru_cache
 
+from agents.llm import STRUCTURED_OUTPUT_METHOD, crear_chat_groq
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from state import (
     AgenteEspecialista,
@@ -18,8 +17,6 @@ from tools.vector_db import buscar_memorias_similares
 
 load_dotenv()
 
-SUPERVISOR_MODEL = "gemini-3-flash-preview"
-PREDICTOR_METADATOS_MODEL = "gemini-3-flash-preview"
 
 PROMPT_SISTEMA = """\
 Eres el Supervisor de un sistema de orquestación multi-agente. Tu única responsabilidad \
@@ -40,8 +37,8 @@ para `investigador` antes de las de `ejecutor`.
 6. Si se proporciona contexto de ejecuciones pasadas exitosas, úsalo como referencia \
 estratégica; no lo copies literalmente si la solicitud actual difiere.
 7. Si se indican metadatos predichos (sector/tipo de tarea), alínea el plan con esa clasificación.
-8. Responde únicamente mediante el esquema estructurado solicitado; no incluyas texto libre \
-fuera del JSON.
+8. Responde únicamente en formato JSON válido, siguiendo estrictamente el esquema estructurado \
+solicitado; no incluyas texto libre fuera del JSON.
 """
 
 PROMPT_SISTEMA_PREDICCION = """\
@@ -59,16 +56,23 @@ Análisis Técnico, Estudio de Mercado, Guía Comercial, Informe Comparativo.
 - Basa la predicción en la intención explícita de la solicitud, no en suposiciones vagas.
 - Usa el mismo idioma que la solicitud del usuario.
 - Usa categorías consistentes con las que se indexan memorias (nombres propios capitalizados).
-- Responde únicamente mediante el esquema estructurado solicitado.
+- Responde únicamente en formato JSON válido, siguiendo estrictamente el esquema estructurado solicitado.
 """
 
 
 class SubtareaPlanificada(BaseModel):
     """Subtarea generada por el Supervisor antes de mapearse al State."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     descripcion: str = Field(description="Acción concreta que debe ejecutar el especialista")
     agente_asignado: AgenteEspecialista = Field(
-        description="Especialista al que se delega la subtarea"
+        validation_alias=AliasChoices("agente_asignado", "agente"),
+        serialization_alias="agente_asignado",
+        description=(
+            "Especialista al que se delega la subtarea (investigador o ejecutor). "
+            "Clave JSON preferida: agente_asignado."
+        ),
     )
     prioridad: int = Field(
         ge=1,
@@ -80,47 +84,43 @@ class SubtareaPlanificada(BaseModel):
 class PlanSupervisor(BaseModel):
     """Esquema de Structured Output obligatorio del Supervisor."""
 
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
     analisis: str = Field(
-        description="Breve análisis de la solicitud y estrategia de ejecución"
+        default="",
+        description=(
+            "Breve análisis de la solicitud y estrategia de ejecución. "
+            "Clave JSON obligatoria: analisis."
+        ),
     )
     subtareas: list[SubtareaPlanificada] = Field(
+        validation_alias=AliasChoices("subtareas", "tareas"),
+        serialization_alias="subtareas",
         min_length=1,
-        description="Desglose procesable de la solicitud en subtareas",
+        description=(
+            "Desglose procesable de la solicitud en subtareas. "
+            "Clave JSON preferida: subtareas (no usar 'tareas')."
+        ),
     )
     siguiente_agente: AgenteEspecialista = Field(
-        description="Primer especialista que debe activarse según el plan"
+        description="Primer especialista que debe activarse según el plan",
     )
-
-
-def _obtener_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta la variable de entorno GEMINI_API_KEY. "
-            "Configúrala en el archivo .env antes de ejecutar el Supervisor."
-        )
-    return api_key
 
 
 @lru_cache(maxsize=1)
 def _obtener_planificador():
-    """Inicializa ChatGoogleGenerativeAI con salida estructurada (singleton)."""
-    llm = ChatGoogleGenerativeAI(
-        model=SUPERVISOR_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.2,
-    )
-    return llm.with_structured_output(PlanSupervisor, method="json_schema")
+    """Inicializa ChatGroq con salida estructurada (singleton)."""
+    llm = crear_chat_groq(temperature=0.2)
+    return llm.with_structured_output(PlanSupervisor, method=STRUCTURED_OUTPUT_METHOD)
 
 
 @lru_cache(maxsize=1)
 def _obtener_predictor_metadatos():
-    llm = ChatGoogleGenerativeAI(
-        model=PREDICTOR_METADATOS_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.0,
+    llm = crear_chat_groq(temperature=0.0)
+    return llm.with_structured_output(
+        PrediccionMetadatosSolicitud,
+        method=STRUCTURED_OUTPUT_METHOD,
     )
-    return llm.with_structured_output(PrediccionMetadatosSolicitud, method="json_schema")
 
 
 def predecir_metadatos_solicitud(solicitud: str) -> PrediccionMetadatosSolicitud:
@@ -257,7 +257,7 @@ def generar_plan(
     prediccion: PrediccionMetadatosSolicitud | None = None,
     uso_fallback: bool = False,
 ) -> PlanSupervisor:
-    """Genera el plan estructurado del Supervisor usando Gemini."""
+    """Genera el plan estructurado del Supervisor."""
     if not solicitud.strip():
         raise ValueError("La solicitud no puede estar vacía.")
 

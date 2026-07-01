@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowUp, Play } from 'lucide-react'
+import { ArrowUp } from 'lucide-react'
 import type { ScreenStep } from '../types'
 import { EJEMPLO_SOLICITUD } from '../constants'
 import { cn } from '../lib/utils'
@@ -124,7 +124,7 @@ export function ChatComposer({
             placeholder={getPlaceholder(step, variant)}
             rows={isHero ? 5 : 2}
             className={cn(
-              'block w-full resize-none overflow-hidden bg-transparent px-4 pr-3 text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-100 placeholder:text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-50',
+              'block w-full resize-none overflow-hidden bg-transparent px-4 pr-3 text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-100 placeholder:text-slate-400/85 outline-none disabled:cursor-not-allowed disabled:opacity-50',
               isHero ? 'min-h-[7.5rem] py-4' : 'min-h-[3.25rem] py-3',
             )}
           />
@@ -135,7 +135,7 @@ export function ChatComposer({
           }`}
         >
           <span className="text-[11px] text-slate-500">
-            {isHero ? 'Enter para iniciar' : 'Shift+Enter nueva línea'}
+            {isHero ? 'Enter para enviar' : 'Shift+Enter nueva línea'}
           </span>
           <button
             type="button"
@@ -147,8 +147,7 @@ export function ChatComposer({
           >
             {isHero ? (
               <>
-                <Play className="h-4 w-4" />
-                Iniciar
+                <ArrowUp className="h-4 w-4" />
               </>
             ) : (
               <ArrowUp className="h-4 w-4" />

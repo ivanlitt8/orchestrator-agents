@@ -3,11 +3,10 @@ import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import type { ScreenStep } from './types'
 import { Header } from './components/Header'
 import { Sidebar } from './components/Sidebar'
-import { ChatFeed } from './components/ChatFeed'
 import { ChatComposer } from './components/ChatComposer'
 // import { DevStepToolbar } from './components/DevStepToolbar'
+import { FeedScrollContainer } from './components/FeedScrollContainer'
 import { OrchestratorAvatar } from './components/OrchestratorAvatar'
-import { ScrollArea } from './components/ui/scroll-area'
 import { useTaskOrchestrator } from './hooks/useTaskOrchestrator'
 
 function App() {
@@ -17,6 +16,7 @@ function App() {
     feedItems,
     logs,
     currentNode,
+    liveReport,
     error,
     isLoading,
     submitPrompt,
@@ -76,14 +76,13 @@ function App() {
                   transition={{ duration: 0.3, delay: 0.1 }}
                   className="min-h-0 flex-1"
                 >
-                  <ScrollArea type="auto" className="h-full w-full">
-                    <ChatFeed
-                      step={step}
-                      feedItems={feedItems}
-                      logs={logs}
-                      currentNode={currentNode}
-                    />
-                  </ScrollArea>
+                  <FeedScrollContainer
+                    step={step}
+                    feedItems={feedItems}
+                    logs={logs}
+                    currentNode={currentNode}
+                    liveReport={liveReport}
+                  />
                 </motion.main>
                 <div className="shrink-0 border-t border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
                   <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-4">

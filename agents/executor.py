@@ -1,9 +1,9 @@
-import os
 from functools import lru_cache
 
+from agents.llm import crear_chat_groq
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 
 from state import (
     AgenteEspecialista,
@@ -14,7 +14,6 @@ from state import (
 
 load_dotenv()
 
-EJECUTOR_MODEL = "gemini-3-flash-preview"
 
 PROMPT_SISTEMA = """\
 Eres el Ejecutor de un sistema de orquestación multi-agente. Actúas como redactor \
@@ -57,24 +56,10 @@ por el revisor (técnico automático o humano), manteniendo calidad profesional.
 """
 
 
-def _obtener_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta la variable de entorno GEMINI_API_KEY. "
-            "Configúrala en el archivo .env antes de ejecutar el Ejecutor."
-        )
-    return api_key
-
-
 @lru_cache(maxsize=1)
-def _obtener_llm() -> ChatGoogleGenerativeAI:
-    """Inicializa ChatGoogleGenerativeAI para redacción (singleton)."""
-    return ChatGoogleGenerativeAI(
-        model=EJECUTOR_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.4,
-    )
+def _obtener_llm() -> ChatGroq:
+    """Inicializa ChatGroq para redacción (singleton)."""
+    return crear_chat_groq(temperature=0.4)
 
 
 def _extraer_contenido(respuesta) -> str:
@@ -126,7 +111,7 @@ def redactar_informe(
     subtarea_descripcion: str,
     contexto_acumulado: list[str],
 ) -> str:
-    """Genera el reporte consolidado usando Gemini."""
+    """Genera el reporte consolidado."""
     if not solicitud.strip():
         raise ValueError("La solicitud no puede estar vacía.")
 
@@ -182,7 +167,7 @@ def redactar_informe_con_feedback(
 
 
 def nodo_ejecutor(state: State) -> dict:
-    """Redacta o revisa el informe final con Gemini."""
+    """Redacta o revisa el informe final."""
     contador = {"intentos_ejecucion": state.intentos_ejecucion + 1}
 
     subtarea = primera_subtarea_pendiente_por_agente(

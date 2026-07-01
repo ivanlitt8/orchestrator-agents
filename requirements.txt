@@ -2,6 +2,7 @@ langgraph
 langchain-openai
 langchain-anthropic
 langchain-google-genai
+langchain-groq
 langchain-tavily
 tavily-python
 chromadb

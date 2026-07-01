@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, CheckCircle2, Loader2, User } from 'lucide-react'
-import type { FeedItem, ScreenStep } from '../types'
+import type { FeedItem, MetricasTokens, ScreenStep } from '../types'
 import { AGENTES_GRAFO } from '../constants'
 import { MarkdownReportRenderer } from './MarkdownReportRenderer'
 import { OrchestratorAvatar } from './OrchestratorAvatar'
+import { TokenUsagePanel } from './TokenUsagePanel'
 import { ScrollArea } from './ui/scroll-area'
 import { filterLogsForAgent } from '../utils/agentLogs'
 import {
@@ -22,6 +23,53 @@ const fadeUp = {
 const accordionTransition = {
   duration: 0.28,
   ease: [0.22, 1, 0.36, 1] as const,
+}
+
+const ORCHESTRATOR_FEED_KINDS = new Set([
+  'pipeline',
+  'hitl_report',
+  'completed_report',
+])
+
+function resolveLastOrchestratorKey(
+  feedItems: FeedItem[],
+  hasLiveProcessing: boolean,
+): string | null {
+  if (hasLiveProcessing) return 'live_processing'
+
+  for (let i = feedItems.length - 1; i >= 0; i -= 1) {
+    const item = feedItems[i]
+    if (ORCHESTRATOR_FEED_KINDS.has(item.kind)) return item.id
+  }
+
+  return null
+}
+
+function OrchestratorMessageLayout({
+  step,
+  showAvatar,
+  fallbackIcon,
+  children,
+}: {
+  step: ScreenStep
+  showAvatar: boolean
+  fallbackIcon: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <FeedBlock>
+      <div className="flex items-start gap-2">
+        {showAvatar ? (
+          <OrchestratorAvatar step={step} placement="processing" />
+        ) : (
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center self-start rounded-full bg-slate-800 ring-1 ring-slate-700">
+            {fallbackIcon}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+    </FeedBlock>
+  )
 }
 
 function FeedBlock({
@@ -95,12 +143,16 @@ function ProcessingBlock({
   step,
   currentNode,
   logs,
+  liveReport = null,
   frozen = false,
+  showAvatar = false,
 }: {
   step: ScreenStep
   currentNode: string | null
   logs: string[]
+  liveReport?: string | null
   frozen?: boolean
+  showAvatar?: boolean
 }) {
   const visualStep = frozen ? 'HITL_WAITING' : step
   const agentStates = resolveAgentVisualStates(currentNode, visualStep, logs)
@@ -108,18 +160,12 @@ function ProcessingBlock({
   const isActive = !frozen && step === 'PROCESSING'
 
   return (
-    <FeedBlock>
-      <div className="flex items-start gap-2">
-        {isActive && (
-          <OrchestratorAvatar step={step} placement="processing" />
-        )}
-        <div className="flex min-w-0 flex-1 gap-3">
-          {!isActive && (
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800 ring-1 ring-slate-700">
-              <Bot className="h-4 w-4 text-violet-400" />
-            </div>
-          )}
-          <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-slate-800 bg-slate-900/60">
+    <OrchestratorMessageLayout
+      step={step}
+      showAvatar={showAvatar}
+      fallbackIcon={<Bot className="h-4 w-4 text-violet-400" />}
+    >
+      <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-slate-800 bg-slate-900/60">
             <div className="border-b border-slate-800 px-4 py-3">
               <div className="flex items-center gap-2">
                 {isActive ? (
@@ -191,27 +237,42 @@ function ProcessingBlock({
                 )
               })}
             </ul>
-          </div>
-        </div>
+            {isActive && liveReport && (
+              <div className="border-t border-slate-800 px-4 py-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-violet-300/80">
+                  Redactando informe
+                </p>
+                <MarkdownReportRenderer
+                  content={liveReport}
+                  enableTypewriter={false}
+                />
+              </div>
+            )}
       </div>
-    </FeedBlock>
+    </OrchestratorMessageLayout>
   )
 }
 
 function HitlReportBlock({
   content,
   scoreCalidad,
+  metricasTokens,
+  step,
+  showAvatar,
 }: {
   content: string
   scoreCalidad: number
+  metricasTokens?: MetricasTokens
+  step: ScreenStep
+  showAvatar: boolean
 }) {
   return (
-    <FeedBlock>
-      <div className="flex gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800 ring-1 ring-violet-500/30">
-          <Bot className="h-4 w-4 text-violet-400" />
-        </div>
-        <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-violet-500/25 bg-violet-500/5">
+    <OrchestratorMessageLayout
+      step={step}
+      showAvatar={showAvatar}
+      fallbackIcon={<Bot className="h-4 w-4 text-violet-400" />}
+    >
+      <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-violet-500/25 bg-violet-500/5">
           <div className="border-b border-violet-500/20 px-4 py-3">
             <p className="text-sm font-medium text-slate-100">
               Informe preliminar generado
@@ -223,21 +284,33 @@ function HitlReportBlock({
           </div>
           <div className="p-4">
             <MarkdownReportRenderer content={content} />
+            {metricasTokens && (
+              <TokenUsagePanel metricas={metricasTokens} variant="hitl" />
+            )}
           </div>
-        </div>
       </div>
-    </FeedBlock>
+    </OrchestratorMessageLayout>
   )
 }
 
-function CompletedBlock({ content }: { content: string }) {
+function CompletedBlock({
+  content,
+  metricasTokens,
+  step,
+  showAvatar,
+}: {
+  content: string
+  metricasTokens?: MetricasTokens
+  step: ScreenStep
+  showAvatar: boolean
+}) {
   return (
-    <FeedBlock>
-      <div className="flex gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 ring-1 ring-emerald-500/40">
-          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-        </div>
-        <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-emerald-500/30 bg-emerald-500/5">
+    <OrchestratorMessageLayout
+      step={step}
+      showAvatar={showAvatar}
+      fallbackIcon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+    >
+      <div className="min-w-0 flex-1 overflow-hidden rounded-2xl rounded-tl-md border border-emerald-500/30 bg-emerald-500/5">
           <div className="border-b border-emerald-500/20 px-4 py-3">
             <p className="text-sm font-semibold text-emerald-100">
               Informe aprobado y consolidado
@@ -248,14 +321,24 @@ function CompletedBlock({ content }: { content: string }) {
           </div>
           <div className="p-4">
             <MarkdownReportRenderer content={content} variant="premium" />
+            {metricasTokens && (
+              <TokenUsagePanel metricas={metricasTokens} variant="completed" />
+            )}
           </div>
-        </div>
       </div>
-    </FeedBlock>
+    </OrchestratorMessageLayout>
   )
 }
 
-function FeedHistoryItem({ item }: { item: FeedItem }) {
+function FeedHistoryItem({
+  item,
+  step,
+  showAvatar,
+}: {
+  item: FeedItem
+  step: ScreenStep
+  showAvatar: boolean
+}) {
   switch (item.kind) {
     case 'user':
       return <UserMessage text={item.text} />
@@ -266,6 +349,7 @@ function FeedHistoryItem({ item }: { item: FeedItem }) {
           currentNode={null}
           logs={item.logs}
           frozen
+          showAvatar={showAvatar}
         />
       )
     case 'hitl_report':
@@ -273,10 +357,20 @@ function FeedHistoryItem({ item }: { item: FeedItem }) {
         <HitlReportBlock
           content={item.content}
           scoreCalidad={item.scoreCalidad}
+          metricasTokens={item.metricasTokens}
+          step={step}
+          showAvatar={showAvatar}
         />
       )
     case 'completed_report':
-      return <CompletedBlock content={item.content} />
+      return (
+        <CompletedBlock
+          content={item.content}
+          metricasTokens={item.metricasTokens}
+          step={step}
+          showAvatar={showAvatar}
+        />
+      )
     default:
       return null
   }
@@ -287,6 +381,7 @@ type ChatFeedProps = {
   feedItems: FeedItem[]
   logs: string[]
   currentNode: string | null
+  liveReport?: string | null
 }
 
 export function ChatFeed({
@@ -294,19 +389,33 @@ export function ChatFeed({
   feedItems,
   logs,
   currentNode,
+  liveReport = null,
 }: ChatFeedProps) {
   if (step === 'IDLE') return null
+
+  const hasLiveProcessing = step === 'PROCESSING'
+  const lastOrchestratorKey = resolveLastOrchestratorKey(
+    feedItems,
+    hasLiveProcessing,
+  )
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 pb-8">
       {feedItems.map((item) => (
-        <FeedHistoryItem key={item.id} item={item} />
+        <FeedHistoryItem
+          key={item.id}
+          item={item}
+          step={step}
+          showAvatar={item.id === lastOrchestratorKey}
+        />
       ))}
-      {step === 'PROCESSING' && (
+      {hasLiveProcessing && (
         <ProcessingBlock
           step="PROCESSING"
           currentNode={currentNode}
           logs={logs}
+          liveReport={liveReport}
+          showAvatar={lastOrchestratorKey === 'live_processing'}
         />
       )}
     </div>

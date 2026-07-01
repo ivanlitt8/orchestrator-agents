@@ -1,9 +1,8 @@
-import os
 from functools import lru_cache
 
+from agents.llm import STRUCTURED_OUTPUT_METHOD, crear_chat_groq
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from state import (
     EstadoSubtarea,
@@ -15,8 +14,6 @@ from state import (
 
 load_dotenv()
 
-REVISOR_MODEL = "gemini-3-flash-preview"
-EXTRACTOR_BUSQUEDA_MODEL = "gemini-3-flash-preview"
 SCORE_MINIMO_APROBACION = 4
 MAX_CARACTERES_CONTEXTO_EXTRACTOR = 2500
 
@@ -51,7 +48,7 @@ Marca False cuando el feedback es **puramente editorial**, sin pedir datos exter
 en el contexto acumulado.
 - No copies el feedback literal: destila la intención de búsqueda en lenguaje de consulta.
 
-Responde únicamente mediante el esquema estructurado solicitado.
+Responde únicamente en formato JSON válido, siguiendo estrictamente el esquema estructurado solicitado.
 """
 
 PROMPT_SISTEMA = """\
@@ -80,7 +77,7 @@ es evaluar el informe del Ejecutor ANTES de la revisión humana final.
 requieren internet, marca `necesita_nueva_busqueda=True` y escribe en \
 `nueva_query_busqueda` la frase exacta de búsqueda para Tavily.
 - Si el fallo es solo de redacción o formato, deja `necesita_nueva_busqueda=False`.
-- Responde únicamente mediante el esquema estructurado solicitado.
+- Responde únicamente en formato JSON válido, siguiendo estrictamente el esquema estructurado solicitado.
 """
 
 
@@ -146,7 +143,7 @@ def detectar_necesidad_busqueda_humana(
     solicitud: str = "",
     contexto_acumulado: list[str] | None = None,
 ) -> tuple[bool, str]:
-    """Clasifica el feedback humano con Gemini Structured Output."""
+    """Clasifica el feedback humano con salida estructurada."""
     texto = feedback.strip()
     if not texto:
         return False, ""
@@ -172,37 +169,19 @@ def detectar_necesidad_busqueda_humana(
     return _normalizar_extraccion_busqueda(extraccion)
 
 
-def _obtener_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta la variable de entorno GEMINI_API_KEY. "
-            "Configúrala en el archivo .env antes de ejecutar el Revisor."
-        )
-    return api_key
-
-
 @lru_cache(maxsize=1)
 def _obtener_extractor_busqueda_humana():
-    llm = ChatGoogleGenerativeAI(
-        model=EXTRACTOR_BUSQUEDA_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.0,
-    )
+    llm = crear_chat_groq(temperature=0.0)
     return llm.with_structured_output(
         ExtraccionBusquedaFeedbackHumano,
-        method="json_schema",
+        method=STRUCTURED_OUTPUT_METHOD,
     )
 
 
 @lru_cache(maxsize=1)
 def _obtener_evaluador():
-    llm = ChatGoogleGenerativeAI(
-        model=REVISOR_MODEL,
-        api_key=_obtener_api_key(),
-        temperature=0.1,
-    )
-    return llm.with_structured_output(EvaluacionRevisor, method="json_schema")
+    llm = crear_chat_groq(temperature=0.1)
+    return llm.with_structured_output(EvaluacionRevisor, method=STRUCTURED_OUTPUT_METHOD)
 
 
 def _formatear_plan(plan: list) -> str:
